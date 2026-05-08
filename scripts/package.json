@@ -1,13 +1,13 @@
 {
   "name": "svcn-billing-scripts",
   "version": "1.0.0",
-  "description": "SVCN billing alert scripts for GitHub Actions",
   "type": "module",
   "scripts": {
     "alerts": "node billing-alerts.js",
     "generate-bills": "node generate-bills.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.43.4"
+    "@supabase/supabase-js": "^2.43.4",
+    "ws": "^8.18.0"
   }
 }
