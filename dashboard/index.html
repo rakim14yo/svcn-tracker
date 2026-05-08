@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVCN — Billing Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  /* ── TOKENS ── */
+  :root {
+    --bg:        #0a0c0f;
+    --bg2:       #111318;
+    --bg3:       #181c24;
+    --border:    #1f2530;
+    --border2:   #2a3140;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --accent:    #22d3ee;
+    --accent2:   #0ea5e9;
+    --danger:    #f87171;
+    --warn:      #fbbf24;
+    --success:   #34d399;
+    --purple:    #a78bfa;
+    --font-mono: 'Space Mono', monospace;
+    --font-ui:   'Syne', sans-serif;
+    --radius:    8px;
+    --glow:      0 0 20px rgba(34,211,238,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 14px; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── LAYOUT ── */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800;
+    color: var(--bg);
+    font-family: var(--font-mono);
+    box-shadow: var(--glow);
+  }
+
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; }
+  .logo-sub  { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+
+  .header-right {
+    display: flex; align-items: center; gap: 16px;
+  }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  #last-refresh { color: var(--accent); }
+
+  /* ── MAIN ── */
+  main {
+    flex: 1;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ── STAT CARDS ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .stat-card:hover {
+    border-color: var(--border2);
+    transform: translateY(-2px);
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .stat-card.accent::before  { background: var(--accent); }
+  .stat-card.danger::before  { background: var(--danger); }
+  .stat-card.warn::before    { background: var(--warn); }
+  .stat-card.success::before { background: var(--success); }
+  .stat-card.purple::before  { background: var(--purple); }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1;
+  }
+
+  .stat-value.accent  { color: var(--accent); }
+  .stat-value.danger  { color: var(--danger); }
+  .stat-value.warn    { color: var(--warn); }
+  .stat-value.success { color: var(--success); }
+  .stat-value.purple  { color: var(--purple); }
+
+  .stat-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-family: var(--font-mono);
+  }
+
+  /* ── SECTION ── */
+  .section { margin-bottom: 24px; }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .section-title span { color: var(--text); }
+
+  /* ── TABLE ── */
+  .table-wrap {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .search-bar {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 12px; align-items: center;
+  }
+
+  .search-input {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 7px 12px;
+    outline: none;
+    flex: 1;
+    transition: border-color 0.2s;
+  }
+
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+
+  .filter-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: var(--bg3);
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  thead th:hover { color: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--bg3); }
+
+  td {
+    padding: 10px 16px;
+    vertical-align: middle;
+  }
+
+  .customer-name { font-weight: 600; font-size: 13px; }
+  .customer-id   { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: var(--font-mono);
+  }
+
+  .badge-danger  { background: rgba(248,113,113,0.15); color: var(--danger); border: 1px solid rgba(248,113,113,0.3); }
+  .badge-warn    { background: rgba(251,191,36,0.15);  color: var(--warn);   border: 1px solid rgba(251,191,36,0.3); }
+  .badge-success { background: rgba(52,211,153,0.15);  color: var(--success);border: 1px solid rgba(52,211,153,0.3); }
+  .badge-muted   { background: rgba(100,116,139,0.15); color: var(--muted);  border: 1px solid rgba(100,116,139,0.3); }
+  .badge-accent  { background: rgba(34,211,238,0.15);  color: var(--accent); border: 1px solid rgba(34,211,238,0.3); }
+
+  .amount { font-family: var(--font-mono); font-weight: 700; }
+  .amount.danger  { color: var(--danger); }
+  .amount.warn    { color: var(--warn); }
+  .amount.success { color: var(--success); }
+
+  /* ── ACTIONS ── */
+  .action-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .action-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    background: var(--bg2);
+    padding: 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    width: fit-content;
+  }
+
+  .tab {
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--muted);
+    border: none; background: transparent;
+  }
+
+  .tab.active {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 24px;
+    width: 460px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  }
+
+  .modal-title {
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .modal-close {
+    background: none; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 20px; line-height: 1;
+    transition: color 0.2s;
+  }
+
+  .modal-close:hover { color: var(--danger); }
+
+  .form-group { margin-bottom: 14px; }
+
+  .form-label {
+    display: block;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .form-input, .form-select {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-input:focus, .form-select:focus { border-color: var(--accent); }
+  .form-select option { background: var(--bg2); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .btn {
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  .btn-primary:hover { background: var(--accent2); box-shadow: var(--glow); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border2);
+  }
+
+  .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+
+  .btn-success { background: var(--success); color: var(--bg); }
+  .btn-success:hover { filter: brightness(1.1); }
+
+  .modal-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    margin-top: 20px; padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty {
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+
+  /* ── LOADING ── */
+  .skeleton {
+    background: linear-gradient(90deg, var(--bg3) 25%, var(--bg2) 50%, var(--bg3) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── CONFIG BANNER ── */
+  .config-banner {
+    background: rgba(251,191,36,0.1);
+    border: 1px solid rgba(251,191,36,0.3);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .config-banner-icon { font-size: 20px; }
+  .config-banner code {
+    background: var(--bg3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: none;
+    z-index: 9000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    max-width: 320px;
+  }
+
+  #toast.show { display: block; animation: slideIn 0.3s ease; }
+
+  @keyframes slideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    main { padding: 12px; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .desktop-only { display: none; }
+    table { font-size: 12px; }
+    td, th { padding: 8px 10px; }
+    .modal { padding: 16px; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── HEADER ── -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">S</div>
+      <div>
+        <div class="logo-text">SVCN Billing</div>
+        <div class="logo-sub">Satellite Vision Cable Network</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        <span>LIVE &nbsp;·&nbsp; <span id="last-refresh">—</span></span>
+      </div>
+      <button class="btn btn-primary" onclick="openModal('addCustomer')" style="padding:7px 14px;font-size:11px;">+ Customer</button>
+      <button class="btn btn-success" onclick="openModal('addPayment')" style="padding:7px 14px;font-size:11px;">+ Payment</button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- CONFIG BANNER (shown if Supabase not configured) -->
+    <div class="config-banner" id="config-banner" style="display:none;">
+      <div class="config-banner-icon">⚙️</div>
+      <div>
+        <strong>Configure your Supabase connection</strong> — Edit <code>dashboard/index.html</code> and replace
+        <code>YOUR_SUPABASE_URL</code> and <code>YOUR_SUPABASE_ANON_KEY</code> with your project values.
+        Find them in Supabase → Project Settings → API.
+      </div>
+    </div>
+
+    <!-- ── STAT CARDS ── -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card accent">
+        <div class="stat-label">Active Customers</div>
+        <div class="stat-value accent" id="stat-customers">—</div>
+        <div class="stat-sub">on network</div>
+      </div>
+      <div class="stat-card danger">
+        <div class="stat-label">Overdue Bills</div>
+        <div class="stat-value danger" id="stat-overdue-count">—</div>
+        <div class="stat-sub" id="stat-overdue-amount">৳0 outstanding</div>
+      </div>
+      <div class="stat-card warn">
+        <div class="stat-label">Due in 3 Days</div>
+        <div class="stat-value warn" id="stat-due-soon">—</div>
+        <div class="stat-sub">upcoming</div>
+      </div>
+      <div class="stat-card success">
+        <div class="stat-label">Collected This Month</div>
+        <div class="stat-value success" id="stat-collected">—</div>
+        <div class="stat-sub">BDT received</div>
+      </div>
+    </div>
+
+    <!-- ── TABS ── -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('bills')">Outstanding Bills</button>
+      <button class="tab" onclick="switchTab('customers')">Customers</button>
+      <button class="tab" onclick="switchTab('payments')">Payments</button>
+      <button class="tab" onclick="switchTab('alerts')">Alert Log</button>
+    </div>
+
+    <!-- ── BILLS TAB ── -->
+    <div id="tab-bills" class="section">
+      <div class="table-wrap">
+        <div class="search-bar">
+          <input type="text" class="search-input" id="bill-search" placeholder="Search by name or ID..." oninput="filterBills()">
+          <button class="filter-btn active" data-filter="all" onclick="setBillFilter('all',this)">All</button>
+          <button class="filter-btn" data-filter="overdue" onclick="setBillFilter('overdue',this)">🔴 Overdue</button>
+          <button class="filter-btn" data-filter="due_soon" onclick="setBillFilter('due_soon',this)">🟡 Due Soon</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Package</th>
+                <th class="desktop-only">Month</th>
+                <th>Amount</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="bills-tbody">
+              <tr><td colspan="7"><div class="empty"><div class="empty-icon">⏳</div>Loading bills...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CUSTOMERS TAB ── -->
+    <div id="tab-customers" class="section" style="display:none;">
+      <div class="table-wrap">
+        <div class="search-bar">
+          <input type="text" class="search-input" id="cust-search" placeholder="Search customers..." oninput="filterCustomers()">
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th class="desktop-only">Phone</th>
+                <th class="desktop-only">Area</th>
+                <th>Package</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="customers-tbody">
+              <tr><td colspan="6"><div class="empty"><div class="empty-icon">⏳</div>Loading...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PAYMENTS TAB ── -->
+    <div id="tab-payments" class="section" style="display:none;">
+      <div class="table-wrap">
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th class="desktop-only">Method</th>
+                <th class="desktop-only">Reference</th>
+              </tr>
+            </thead>
+            <tbody id="payments-tbody">
+              <tr><td colspan="5"><div class="empty"><div class="empty-icon">⏳</div>Loading...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ALERTS TAB ── -->
+    <div id="tab-alerts" class="section" style="display:none;">
+      <div class="table-wrap">
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Customer</th>
+                <th class="desktop-only">Message</th>
+                <th>Sent At</th>
+                <th>Channel</th>
+              </tr>
+            </thead>
+            <tbody id="alerts-tbody">
+              <tr><td colspan="5"><div class="empty"><div class="empty-icon">⏳</div>Loading...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── ADD CUSTOMER MODAL ── -->
+<div class="modal-overlay" id="modal-addCustomer">
+  <div class="modal">
+    <div class="modal-title">
+      Add Customer
+      <button class="modal-close" onclick="closeModal('addCustomer')">×</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Customer ID</label>
+        <input class="form-input" id="new-cust-id" placeholder="SVCN-0001" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input class="form-input" id="new-cust-name" placeholder="Mohammad Hasan" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input class="form-input" id="new-cust-phone" placeholder="01712345678" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Area</label>
+        <input class="form-input" id="new-cust-area" placeholder="Nasirabad Block-A" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Package</label>
+        <select class="form-select" id="new-cust-pkg" onchange="updatePackagePrice()">
+          <option value="20|500">20 Mbps — ৳500/mo</option>
+          <option value="35|650">35 Mbps — ৳650/mo</option>
+          <option value="50|800">50 Mbps — ৳800/mo</option>
+          <option value="65|950">65 Mbps — ৳950/mo</option>
+          <option value="80|1100">80 Mbps — ৳1100/mo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Connection Type</label>
+        <select class="form-select" id="new-cust-type">
+          <option value="wifi">WiFi</option>
+          <option value="dish_cable">Dish TV (Cable) — ৳350</option>
+          <option value="dish_stb">Dish TV (STB) — ৳500</option>
+          <option value="combo">Combo Package — ৳1050</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <input class="form-input" id="new-cust-notes" placeholder="Optional notes..." />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addCustomer')">Cancel</button>
+      <button class="btn btn-primary" onclick="addCustomer()">Add Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD PAYMENT MODAL ── -->
+<div class="modal-overlay" id="modal-addPayment">
+  <div class="modal">
+    <div class="modal-title">
+      Record Payment
+      <button class="modal-close" onclick="closeModal('addPayment')">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Customer</label>
+      <select class="form-select" id="pay-customer" onchange="loadCustomerBills()">
+        <option value="">— Select customer —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Bill</label>
+      <select class="form-select" id="pay-bill">
+        <option value="">— Select bill —</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Amount (৳)</label>
+        <input class="form-input" id="pay-amount" type="number" placeholder="650" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Payment Date</label>
+        <input class="form-input" id="pay-date" type="date" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Method</label>
+        <select class="form-select" id="pay-method">
+          <option value="cash">Cash</option>
+          <option value="bkash">bKash</option>
+          <option value="nagad">Nagad</option>
+          <option value="rocket">Rocket</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reference / TrxID</label>
+        <input class="form-input" id="pay-ref" placeholder="bKash TrxID..." />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addPayment')">Cancel</button>
+      <button class="btn btn-success" onclick="recordPayment()">Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+// CONFIG — Replace these with your values
+// ════════════════════════════════════════════
+const SUPABASE_URL      = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+// ════════════════════════════════════════════
+
+let db;
+let allBills = [];
+let allCustomers = [];
+let allPayments = [];
+let billFilter = 'all';
+
+// ── Init ──────────────────────────────────
+function init() {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+    document.getElementById('config-banner').style.display = 'flex';
+    return;
+  }
+  db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  setDefaultDate();
+  loadAll();
+  // Auto-refresh every 5 minutes
+  setInterval(loadAll, 5 * 60 * 1000);
+}
+
+function setDefaultDate() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('pay-date').value = today;
+}
+
+// ── Load All Data ─────────────────────────
+async function loadAll() {
+  await Promise.all([loadStats(), loadBills(), loadCustomers(), loadPayments(), loadAlerts()]);
+  updateRefreshTime();
+}
+
+function updateRefreshTime() {
+  const now = new Date().toLocaleTimeString('en-BD', { timeZone: 'Asia/Dhaka', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('last-refresh').textContent = now;
+}
+
+// ── Stats ─────────────────────────────────
+async function loadStats() {
+  const { data } = await db.from('v_dashboard_stats').select('*').single();
+  if (!data) return;
+  document.getElementById('stat-customers').textContent     = data.active_customers ?? 0;
+  document.getElementById('stat-overdue-count').textContent = data.overdue_count ?? 0;
+  document.getElementById('stat-overdue-amount').textContent = `৳${(data.overdue_amount||0).toLocaleString('en-BD')} outstanding`;
+  document.getElementById('stat-due-soon').textContent      = data.due_soon_count ?? 0;
+  document.getElementById('stat-collected').textContent     = `৳${(data.collected_this_month||0).toLocaleString('en-BD')}`;
+}
+
+// ── Bills ─────────────────────────────────
+async function loadBills() {
+  const { data } = await db.from('v_outstanding_bills').select('*');
+  allBills = data || [];
+  renderBills();
+}
+
+function renderBills() {
+  const q = document.getElementById('bill-search').value.toLowerCase();
+  let rows = allBills.filter(b => {
+    const matchSearch = !q || b.name?.toLowerCase().includes(q) || b.customer_id?.toLowerCase().includes(q);
+    let matchFilter = true;
+    if (billFilter === 'overdue')   matchFilter = b.days_overdue > 0;
+    if (billFilter === 'due_soon')  matchFilter = b.days_overdue <= 0 && b.days_overdue >= -3;
+    return matchSearch && matchFilter;
+  });
+
+  const tbody = document.getElementById('bills-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">✅</div>No bills match this filter.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(b => {
+    const overdue = b.days_overdue > 0;
+    const dueSoon = b.days_overdue <= 0 && b.days_overdue >= -3;
+    const statusBadge = overdue
+      ? `<span class="badge badge-danger">${b.days_overdue}d overdue</span>`
+      : dueSoon
+      ? `<span class="badge badge-warn">Due in ${Math.abs(b.days_overdue)}d</span>`
+      : `<span class="badge badge-muted">Upcoming</span>`;
+    const amtClass = overdue ? 'danger' : dueSoon ? 'warn' : '';
+    return `
+      <tr>
+        <td>
+          <div class="customer-name">${escHtml(b.name)}</div>
+          <div class="customer-id">${escHtml(b.customer_id)}</div>
+        </td>
+        <td><span class="badge badge-accent">${b.package_mbps}Mbps</span></td>
+        <td class="desktop-only" style="font-family:var(--font-mono);font-size:12px;">${b.bill_month}</td>
+        <td><span class="amount ${amtClass}">৳${b.amount.toLocaleString()}</span></td>
+        <td style="font-family:var(--font-mono);font-size:12px;">${b.due_date}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <button class="action-btn" onclick="quickPay('${escHtml(b.customer_id)}','${b.bill_id}',${b.amount})">Pay ✓</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function filterBills()  { renderBills(); }
+function setBillFilter(f, el) {
+  billFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderBills();
+}
+
+// ── Customers ─────────────────────────────
+async function loadCustomers() {
+  const { data } = await db.from('customers').select('*').order('customer_id');
+  allCustomers = data || [];
+  renderCustomers();
+  populateCustomerDropdowns();
+}
+
+function renderCustomers() {
+  const q = document.getElementById('cust-search')?.value.toLowerCase() || '';
+  let rows = allCustomers.filter(c => !q || c.name?.toLowerCase().includes(q) || c.customer_id?.toLowerCase().includes(q));
+  const tbody = document.getElementById('customers-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon">👥</div>No customers found.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(c => `
+    <tr>
+      <td style="font-family:var(--font-mono);font-size:12px;color:var(--accent)">${escHtml(c.customer_id)}</td>
+      <td class="customer-name">${escHtml(c.name)}</td>
+      <td class="desktop-only" style="font-family:var(--font-mono);font-size:12px;">${c.phone || '—'}</td>
+      <td class="desktop-only" style="font-size:12px;">${c.area || '—'}</td>
+      <td>
+        <span class="badge badge-accent">${c.package_mbps}Mbps</span>
+        <span style="font-family:var(--font-mono);font-size:11px;margin-left:4px;color:var(--muted)">৳${c.package_price}</span>
+      </td>
+      <td><span class="badge ${c.status==='active'?'badge-success':'badge-muted'}">${c.status}</span></td>
+    </tr>`).join('');
+}
+
+function filterCustomers() { renderCustomers(); }
+
+function populateCustomerDropdowns() {
+  const sel = document.getElementById('pay-customer');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Select customer —</option>' +
+    allCustomers.map(c => `<option value="${escHtml(c.customer_id)}">${escHtml(c.name)} (${escHtml(c.customer_id)})</option>`).join('');
+  if (current) sel.value = current;
+}
+
+// ── Payments ──────────────────────────────
+async function loadPayments() {
+  const { data } = await db.from('payments').select('*, customers(name)').order('payment_date', { ascending: false }).limit(100);
+  allPayments = data || [];
+  renderPayments();
+}
+
+function renderPayments() {
+  const tbody = document.getElementById('payments-tbody');
+  if (!allPayments.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">💸</div>No payments recorded yet.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = allPayments.map(p => `
+    <tr>
+      <td>
+        <div class="customer-name">${p.customers?.name || p.customer_id}</div>
+        <div class="customer-id">${p.customer_id}</div>
+      </td>
+      <td><span class="amount success">৳${p.amount.toLocaleString()}</span></td>
+      <td style="font-family:var(--font-mono);font-size:12px;">${p.payment_date}</td>
+      <td class="desktop-only"><span class="badge badge-muted">${p.method}</span></td>
+      <td class="desktop-only" style="font-family:var(--font-mono);font-size:11px;color:var(--muted)">${p.reference || '—'}</td>
+    </tr>`).join('');
+}
+
+// ── Alerts ────────────────────────────────
+async function loadAlerts() {
+  const { data } = await db.from('alert_log').select('*').order('sent_at', { ascending: false }).limit(50);
+  const tbody = document.getElementById('alerts-tbody');
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">🔔</div>No alerts sent yet.</div></td></tr>`;
+    return;
+  }
+  const typeColors = { overdue_severe:'badge-danger', overdue_summary:'badge-danger', due_soon_summary:'badge-warn', daily_summary:'badge-accent', payment_received:'badge-success', new_bill:'badge-muted' };
+  tbody.innerHTML = data.map(a => `
+    <tr>
+      <td><span class="badge ${typeColors[a.alert_type]||'badge-muted'}">${a.alert_type.replace(/_/g,' ')}</span></td>
+      <td style="font-family:var(--font-mono);font-size:12px;">${a.customer_id || '—'}</td>
+      <td class="desktop-only" style="font-size:12px;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.message?.slice(0,80)||'—'}…</td>
+      <td style="font-family:var(--font-mono);font-size:11px;">${new Date(a.sent_at).toLocaleString('en-BD',{timeZone:'Asia/Dhaka'})}</td>
+      <td><span class="badge badge-accent">${a.channel}</span></td>
+    </tr>`).join('');
+}
+
+// ── Add Customer ──────────────────────────
+async function addCustomer() {
+  const id    = document.getElementById('new-cust-id').value.trim();
+  const name  = document.getElementById('new-cust-name').value.trim();
+  const phone = document.getElementById('new-cust-phone').value.trim();
+  const area  = document.getElementById('new-cust-area').value.trim();
+  const notes = document.getElementById('new-cust-notes').value.trim();
+  const pkgVal = document.getElementById('new-cust-pkg').value.split('|');
+  const type  = document.getElementById('new-cust-type').value;
+
+  if (!id || !name) { showToast('⚠️ Customer ID and Name are required.'); return; }
+
+  const { error } = await db.from('customers').insert({
+    customer_id: id, name, phone, area, notes,
+    package_mbps: parseInt(pkgVal[0]),
+    package_price: parseInt(pkgVal[1]),
+    connection_type: type,
+  });
+
+  if (error) { showToast(`❌ Error: ${error.message}`); return; }
+
+  showToast(`✅ Customer ${id} added!`);
+  closeModal('addCustomer');
+  await loadCustomers();
+  await loadStats();
+}
+
+// ── Record Payment ────────────────────────
+async function recordPayment() {
+  const custId = document.getElementById('pay-customer').value;
+  const billId = document.getElementById('pay-bill').value;
+  const amount = parseInt(document.getElementById('pay-amount').value);
+  const date   = document.getElementById('pay-date').value;
+  const method = document.getElementById('pay-method').value;
+  const ref    = document.getElementById('pay-ref').value.trim();
+
+  if (!custId || !amount || !date) { showToast('⚠️ Customer, amount, and date are required.'); return; }
+
+  const { error: payError } = await db.from('payments').insert({
+    customer_id: custId,
+    bill_id: billId || null,
+    amount, method, reference: ref || null,
+    payment_date: date,
+  });
+
+  if (payError) { showToast(`❌ Payment error: ${payError.message}`); return; }
+
+  // Mark bill as paid
+  if (billId) {
+    await db.from('bills').update({ status: 'paid', updated_at: new Date().toISOString() }).eq('id', billId);
+  }
+
+  showToast(`✅ Payment of ৳${amount.toLocaleString()} recorded!`);
+  closeModal('addPayment');
+  await loadAll();
+}
+
+// ── Quick Pay (from bills table) ──────────
+function quickPay(customerId, billId, amount) {
+  document.getElementById('pay-customer').value = customerId;
+  document.getElementById('pay-amount').value   = amount;
+  document.getElementById('pay-bill').value     = billId;
+  loadCustomerBills();
+  openModal('addPayment');
+}
+
+async function loadCustomerBills() {
+  const custId = document.getElementById('pay-customer').value;
+  const billSel = document.getElementById('pay-bill');
+  if (!custId) { billSel.innerHTML = '<option value="">— Select bill —</option>'; return; }
+
+  const { data } = await db.from('bills').select('*').eq('customer_id', custId).in('status', ['unpaid','partial']);
+  billSel.innerHTML = '<option value="">— Select bill (optional) —</option>' +
+    (data || []).map(b => `<option value="${b.id}">${b.bill_month} — ৳${b.amount} (${b.status})</option>`).join('');
+}
+
+// ── Tabs ──────────────────────────────────
+function switchTab(name) {
+  ['bills','customers','payments','alerts'].forEach(t => {
+    document.getElementById(`tab-${t}`).style.display = t === name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.classList.toggle('active', ['bills','customers','payments','alerts'][i] === name);
+  });
+}
+
+// ── Modals ────────────────────────────────
+function openModal(name)  { document.getElementById(`modal-${name}`).classList.add('open'); }
+function closeModal(name) { document.getElementById(`modal-${name}`).classList.remove('open'); }
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ── Toast ─────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ── Utils ─────────────────────────────────
+function escHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Start ─────────────────────────────────
+init();
+</script>
+</body>
+</html>
