@@ -182,7 +182,7 @@ async function sendDailySummary() {
   await sendTelegram(msg);
   await logAlert('daily_summary', 'SUMMARY', msg);
   console.log('Daily summary sent.');
-}
+
 }
 
 main();
