@@ -150,27 +150,32 @@ async function sendDailySummary() {
   const today = new Date().toISOString().split('T')[0];
   const monthStart = today.slice(0, 7) + '-01';
 
-  const [
-    { count: activeCustomers },
-    { data: overdueBills },
-    { data: dueSoonBills },
-    { data: payments },
-  ] = await Promise.all([
-    supabase.from('customers').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('bills').select('amount').in('status', ['unpaid','partial']).lt('due_date', today),
-    supabase.from('bills').select('amount').in('status', ['unpaid','partial']).gte('due_date', today),
-    supabase.from('payments').select('amount').gte('payment_date', monthStart),
-  ]);
+  console.log('Today:', today, 'MonthStart:', monthStart);
 
-  const overdueAmount  = (overdueBills || []).reduce((s, b) => s + b.amount, 0);
-  const collectedMonth = (payments     || []).reduce((s, p) => s + p.amount, 0);
+  const r1 = await supabase.from('customers').select('*', { count: 'exact', head: true }).eq('status', 'active');
+  const r2 = await supabase.from('bills').select('amount').in('status', ['unpaid','partial']).lt('due_date', today);
+  const r3 = await supabase.from('bills').select('amount').in('status', ['unpaid','partial']).gte('due_date', today);
+  const r4 = await supabase.from('payments').select('amount').gte('payment_date', monthStart);
+
+  console.log('Customers:', JSON.stringify(r1));
+  console.log('Overdue bills:', JSON.stringify(r2));
+  console.log('Due soon:', JSON.stringify(r3));
+  console.log('Payments:', JSON.stringify(r4));
+
+  const activeCustomers = r1.count;
+  const overdueBills    = r2.data || [];
+  const dueSoonBills    = r3.data || [];
+  const payments        = r4.data || [];
+
+  const overdueAmount  = overdueBills.reduce((s, b) => s + b.amount, 0);
+  const collectedMonth = payments.reduce((s, p) => s + p.amount, 0);
 
   const msg = [
     `📊 <b>SVCN Daily Summary</b>`,
     `📅 ${new Date().toLocaleDateString('en-BD', { weekday:'long', year:'numeric', month:'long', day:'numeric', timeZone:'Asia/Dhaka' })}`,
     ``, `👥 Active customers: <b>${activeCustomers ?? 0}</b>`,
-    `🔴 Overdue bills: <b>${(overdueBills||[]).length}</b> (${taka(overdueAmount)})`,
-    `🟡 Due soon: <b>${(dueSoonBills||[]).length}</b>`,
+    `🔴 Overdue bills: <b>${overdueBills.length}</b> (${taka(overdueAmount)})`,
+    `🟡 Due soon: <b>${dueSoonBills.length}</b>`,
     `✅ Collected this month: <b>${taka(collectedMonth)}</b>`
   ].join('\n');
 
@@ -178,24 +183,6 @@ async function sendDailySummary() {
   await logAlert('daily_summary', 'SUMMARY', msg);
   console.log('Daily summary sent.');
 }
-
-async function main() {
-  console.log('=== SVCN Billing Alert Check ===');
-  console.log('Time (BD):', new Date().toLocaleString('en-BD', { timeZone: 'Asia/Dhaka' }));
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.error('Missing environment variables. Check your GitHub Secrets.');
-    process.exit(1);
-  }
-  try {
-    await checkOverdue();
-    await checkDueSoon();
-    await sendDailySummary();
-    console.log('=== Done ===');
-  } catch (err) {
-    console.error('Fatal error:', err);
-    await sendTelegram(`⚠️ <b>SVCN Alert Error</b>\n\n${err.message}`).catch(() => {});
-    process.exit(1);
-  }
 }
 
 main();
