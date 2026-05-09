@@ -1,8 +1,3 @@
-/**
- * SVCN Billing Alerts — Main Alert Script
- * Queries tables directly (no views) for maximum compatibility
- */
-
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL         = process.env.SUPABASE_URL;
@@ -40,12 +35,8 @@ function daysBetween(dateStr) {
 async function alreadyAlerted(alertType, customerId) {
   const today = new Date().toISOString().split('T')[0];
   const { data } = await supabase
-    .from('alert_log')
-    .select('id')
-    .eq('alert_type', alertType)
-    .eq('customer_id', customerId)
-    .gte('sent_at', `${today}T00:00:00Z`)
-    .limit(1);
+    .from('alert_log').select('id').eq('alert_type', alertType)
+    .eq('customer_id', customerId).gte('sent_at', `${today}T00:00:00Z`).limit(1);
   return data && data.length > 0;
 }
 
@@ -57,10 +48,8 @@ async function checkOverdue() {
   console.log('Checking overdue payments...');
   const today = new Date().toISOString().split('T')[0];
   const { data: bills, error } = await supabase
-    .from('bills')
-    .select('id, customer_id, bill_month, amount, due_date, status')
-    .in('status', ['unpaid', 'partial'])
-    .lt('due_date', today);
+    .from('bills').select('id, customer_id, bill_month, amount, due_date, status')
+    .in('status', ['unpaid', 'partial']).lt('due_date', today);
   if (error) { console.error('Bills query error:', error.message); return; }
   if (!bills || bills.length === 0) { console.log('No overdue bills.'); return; }
 
@@ -95,8 +84,8 @@ async function checkOverdue() {
   }
 
   for (const bill of enriched.filter(b => b.days_overdue > 7)) {
-    const alerted = await alreadyAlerted('overdue_severe', bill.customer_id);
-    if (!alerted) {
+    const a = await alreadyAlerted('overdue_severe', bill.customer_id);
+    if (!a) {
       const msg = [
         `🚨 <b>Severely Overdue</b>`,
         `👤 ${bill.name} | 🆔 ${bill.customer_id}`,
@@ -150,17 +139,17 @@ async function sendDailySummary() {
   const today = new Date().toISOString().split('T')[0];
   const monthStart = today.slice(0, 7) + '-01';
 
-  console.log('Today:', today, 'MonthStart:', monthStart);
+  console.log('Today:', today, '| MonthStart:', monthStart);
 
   const r1 = await supabase.from('customers').select('*', { count: 'exact', head: true }).eq('status', 'active');
   const r2 = await supabase.from('bills').select('amount').in('status', ['unpaid','partial']).lt('due_date', today);
   const r3 = await supabase.from('bills').select('amount').in('status', ['unpaid','partial']).gte('due_date', today);
   const r4 = await supabase.from('payments').select('amount').gte('payment_date', monthStart);
 
-  console.log('Customers:', JSON.stringify(r1));
-  console.log('Overdue bills:', JSON.stringify(r2));
-  console.log('Due soon:', JSON.stringify(r3));
-  console.log('Payments:', JSON.stringify(r4));
+  console.log('r1 customers count:', r1.count, 'error:', r1.error?.message);
+  console.log('r2 overdue bills:', r2.data?.length, 'error:', r2.error?.message);
+  console.log('r3 due soon:', r3.data?.length, 'error:', r3.error?.message);
+  console.log('r4 payments:', r4.data?.length, 'sample:', JSON.stringify(r4.data?.slice(0,2)), 'error:', r4.error?.message);
 
   const activeCustomers = r1.count;
   const overdueBills    = r2.data || [];
@@ -182,7 +171,25 @@ async function sendDailySummary() {
   await sendTelegram(msg);
   await logAlert('daily_summary', 'SUMMARY', msg);
   console.log('Daily summary sent.');
+}
 
+async function main() {
+  console.log('=== SVCN Billing Alert Check ===');
+  console.log('Time (BD):', new Date().toLocaleString('en-BD', { timeZone: 'Asia/Dhaka' }));
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    console.error('Missing environment variables. Check your GitHub Secrets.');
+    process.exit(1);
+  }
+  try {
+    await checkOverdue();
+    await checkDueSoon();
+    await sendDailySummary();
+    console.log('=== Done ===');
+  } catch (err) {
+    console.error('Fatal error:', err);
+    await sendTelegram(`⚠️ <b>SVCN Alert Error</b>\n\n${err.message}`).catch(() => {});
+    process.exit(1);
+  }
 }
 
 main();
